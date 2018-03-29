@@ -24,7 +24,12 @@ public class SmartWallTile : Tile {
         All  = 255
     }
 
-    public Sprite[] sprites;
+    public Sprite filledTile;
+    public Sprite[] edgeTileParts;
+    public Sprite[] holeTileParts;
+
+    private Sprite[] generatedByMask = new Sprite[256];
+    private Dictionary<Side, Sprite> generatedByPattern = new Dictionary<Side, Sprite>();
 
     public override void RefreshTile(Vector3Int location, ITilemap tilemap) {
         for (var yd = -1; yd <= 1; yd++) {
@@ -57,96 +62,61 @@ public class SmartWallTile : Tile {
         return tilemap.GetTile(position) == this;
     }
 
-    // The following determines which sprite to use based on the number of adjacent RoadTiles
     private Sprite GetSpriteByMask(byte mask) {
-        return sprites[mask];
-        // if(mask == (byte)(Side.All)) return sprites[0];
-
-        // var axis = mask & (byte)(Side.T | Side.R | Side.B | Side.L);
-        // switch (axis) {
-        //     case (byte)Side.None:         return sprites[1];
-        //     case (byte)Side.T:            return sprites[2];
-        //     case (byte)Side.R:            return sprites[3];
-        //     case (byte)Side.B:            return sprites[4];
-        //     case (byte)Side.L:            return sprites[5];
-        //     case (byte)(Side.T | Side.B): return sprites[6];
-        //     case (byte)(Side.R | Side.L): return sprites[7];
-        //     case (byte)(Side.T | Side.R): {
-        //         if(mask == (byte)(Side.T | Side.R | Side.TR)) return sprites[8];
-        //         return sprites[9];
-        //     }
-        //     case (byte)(Side.R | Side.B): {
-        //         if(mask == (byte)(Side.B | Side.R | Side.BR)) return sprites[10];
-        //         return sprites[11];
-        //     }
-        //     case (byte)(Side.B | Side.L): {
-        //         if(mask == (byte)(Side.B | Side.L | Side.BL)) return sprites[12];
-        //         return sprites[13];
-        //     }
-        //     case (byte)(Side.L | Side.T): {
-        //         if(mask == (byte)(Side.T | Side.L | Side.TL)) return sprites[14];
-        //         return sprites[15];
-        //     }
-        //     case (byte)(Side.T | Side.B | Side.L): {
-        //         switch(mask) {
-        //             case (byte)(Side.T | Side.B | Side.L | Side.TL): return sprites[16];
-        //             case (byte)(Side.T | Side.B | Side.L | Side.BL): return sprites[17];
-        //             case (byte)(Side.T | Side.B | Side.L | Side.TL | Side.BL): return sprites[18];
-        //             default: return sprites[19];
-        //         }
-        //     }
-        //     case (byte)(Side.T | Side.B | Side.R): {
-        //         switch(mask) {
-        //             case (byte)(Side.T | Side.B | Side.R | Side.TR): return sprites[20];
-        //             case (byte)(Side.T | Side.B | Side.R | Side.BR): return sprites[21];
-        //             case (byte)(Side.T | Side.B | Side.R | Side.TR | Side.BR): return sprites[22];
-        //             default: return sprites[23];
-        //         }
-        //     }
-        //     case (byte)(Side.R | Side.L | Side.T): {
-        //         switch(mask) {
-        //             case (byte)(Side.R | Side.L | Side.T | Side.TR): return sprites[24];
-        //             case (byte)(Side.R | Side.L | Side.T | Side.TL): return sprites[25];
-        //             case (byte)(Side.R | Side.L | Side.T | Side.TR | Side.TL): return sprites[26];
-        //             default: return sprites[27];
-        //         }
-        //     }
-        //     case (byte)(Side.R | Side.L | Side.B): {
-        //         switch(mask) {
-        //             case (byte)(Side.R | Side.L | Side.B | Side.BR): return sprites[28];
-        //             case (byte)(Side.R | Side.L | Side.B | Side.BL): return sprites[29];
-        //             case (byte)(Side.R | Side.L | Side.B | Side.BR | Side.BL): return sprites[30];
-        //             default: return sprites[31];
-        //         }
-        //     }
-        //     case (byte)(Side.R | Side.L | Side.B | Side.T): {
-        //         const Side cross = Side.R | Side.L | Side.B | Side.T;
-        //         switch(mask) {
-        //             case (byte)(cross | Side.TR): return sprites[32];
-        //             case (byte)(cross | Side.BR): return sprites[33];
-        //             case (byte)(cross | Side.BL): return sprites[34];
-        //             case (byte)(cross | Side.TL): return sprites[35];
-
-        //             case (byte)(cross | Side.TR | Side.BR): return sprites[36];
-        //             case (byte)(cross | Side.TR | Side.BL): return sprites[37];
-        //             case (byte)(cross | Side.TR | Side.TL): return sprites[38];
-        //             case (byte)(cross | Side.BR | Side.BL): return sprites[39];
-        //             case (byte)(cross | Side.BR | Side.TL): return sprites[40];
-        //             case (byte)(cross | Side.BL | Side.TL): return sprites[41];
-
-        //             case (byte)(cross | Side.TR | Side.BR | Side.TL): return sprites[42];
-        //             case (byte)(cross | Side.BR | Side.TR | Side.BL): return sprites[43];
-        //             case (byte)(cross | Side.BL | Side.BR | Side.TL): return sprites[44];
-        //             case (byte)(cross | Side.TL | Side.TR | Side.BL): return sprites[45];
-
-        //             default: return sprites[46];
-        //         }
-        //     }
-        //     default: throw new Exception();
-        // }
+        generatedByMask = new Sprite[256];
+#if UNITY_EDITOR
+        if(generatedByMask[mask] == null) {
+            GenerateTile((Side)mask);
+        }
+#endif
+        return generatedByMask[mask];
     }
 
 #if UNITY_EDITOR
+    private void GenerateTile(Side mask) {
+        var pattern = GetTexturePatternByMask(mask);
+        //if(!generatedByPattern.ContainsKey(pattern)) {
+            var ft = filledTile;
+            var w = (int)ft.rect.width;
+            var tex = new Texture2D(w, w);
+
+            tex.SetPixels(ft.texture.GetPixels((int)ft.rect.x, (int)ft.rect.y, (int)ft.rect.width, (int)ft.rect.height));
+            tex.Apply();
+
+            generatedByPattern[pattern] = Sprite.Create(tex, new Rect(0, 0, w, w), new Vector2(0.5f, 0.5f));
+        //}
+        generatedByMask[(byte)mask] = generatedByPattern[pattern];
+    }
+
+    private Side GetTexturePatternByMask(Side mask) {
+        if(mask == Side.All) return mask;
+
+        var axis = mask & (Side.T | Side.R | Side.B | Side.L);
+        switch (axis) {
+            case Side.None:
+            case Side.T:
+            case Side.R:
+            case Side.B:
+            case Side.L:
+            case Side.T | Side.B:
+            case Side.R | Side.L: return axis;
+
+            case Side.T | Side.R: return axis | (mask & Side.TR);
+            case Side.R | Side.B: return axis | (mask & Side.BR);
+            case Side.B | Side.L: return axis | (mask & Side.BL);
+            case Side.L | Side.T: return axis | (mask & Side.TL);
+
+            case Side.T | Side.B | Side.L: return axis | (mask & (Side.TL | Side.BL));
+            case Side.T | Side.B | Side.R: return axis | (mask & (Side.TR | Side.BR));
+            case Side.R | Side.L | Side.T: return axis | (mask & (Side.TR | Side.TL));
+            case Side.R | Side.L | Side.B: return axis | (mask & (Side.BR | Side.BL));
+
+            case Side.R | Side.L | Side.B | Side.T: return mask;
+
+            default: throw new Exception();
+        }
+    }
+
     [MenuItem("Assets/Create/SmartWallTile")]
     public static void CreateRoadTile() {
         string path = EditorUtility.SaveFilePanelInProject("Save SmartWallTile", "SmartWallTile", "asset", "Save SmartWallTile", "Assets");
@@ -156,5 +126,4 @@ public class SmartWallTile : Tile {
 #endif
 
 }
-
 
